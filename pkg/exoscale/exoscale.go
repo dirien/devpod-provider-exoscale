@@ -19,9 +19,8 @@ import (
 )
 
 type ExoscaleProvider struct {
-	Config   *options.Options
-	ClientV2 *v2.Client
-	//Client           *egoscale.Client
+	Config           *options.Options
+	ClientV2         *v2.Client
 	Log              log.Logger
 	WorkingDirectory string
 }
@@ -67,17 +66,11 @@ func NewProvider(logs log.Logger, init bool) (*ExoscaleProvider, error) {
 		return nil, errors.Errorf("EXOSCALE_API_SECRET is not set")
 	}
 
-	/*
-		client := egoscale.NewClient("https://api.exoscale.com/v1", apiKey, apiSecret,
-			egoscale.WithHTTPClient(httpClient),
-			egoscale.WithoutV2Client())
-	*/
 	clientv2, err := v2.NewClient(apiKey, apiSecret)
 	if err != nil {
 		return nil, err
 	}
 	return &ExoscaleProvider{
-		//Client:   client,
 		ClientV2: clientv2,
 		Log:      logs,
 		Config:   config,
@@ -109,7 +102,8 @@ func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) 
 }
 
 func Init(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
-	_, err := exoscaleProvider.ClientV2.ListZones(ctx)
+	ctx2 := exoapi.WithEndpoint(ctx, exoapi.NewReqEndpoint("", exoscaleProvider.Config.Zone))
+	_, err := exoscaleProvider.ClientV2.ListZones(ctx2)
 	if err != nil {
 		return err
 	}
