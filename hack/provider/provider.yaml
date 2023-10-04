@@ -1,0 +1,127 @@
+name: exoscale
+version: ##VERSION##
+description: |-
+  DevPod on Exoscale
+icon: https://raw.githubusercontent.com/dirien/devpod-provider-exoscale/d5924bbd7054889d45b13a1546d08ee5e3acb7ff/exoscale.svg
+optionGroups:
+- options:
+  - EXOSCALE_ZONE
+  - EXOSCALE_INSTANCE_TYPE
+  - EXOSCALE_INSTANCE_TEMPLATE
+  - EXOSCALE_DISK_SIZE_GB
+  name: "Exoscale options"
+- options:
+  - AGENT_PATH
+  - AGENT_DATA_PATH
+  - INACTIVITY_TIMEOUT
+  - INJECT_DOCKER_CREDENTIALS
+  - INJECT_GIT_CREDENTIALS
+  name: "Agent options"
+options:
+  EXOSCALE_API_KEY:
+    description: The Exoscale API Key to use.
+    required: true
+    password: true
+
+  EXOSCALE_API_SECRET:
+    description: The Exoscale API Secret to use.
+    required: true
+    password: true
+
+  EXOSCALE_ZONE:
+    description: The Exoscale zone to use.
+    required: true
+    default: de-fra-1
+    suggestions:
+    - at-vie-1
+    - at-vie-2
+    - bg-sof-1
+    - ch-dk-2
+    - ch-gva-2
+    - de-fra-1
+
+  EXOSCALE_DISK_SIZE_GB:
+    description: The disk size in GB.
+    default: "150"
+
+  EXOSCALE_INSTANCE_TYPE:
+    description: The Exoscale instance type to use.
+    default: medium
+    suggestions:
+    - micro
+    - tiny
+    - small
+    - medium
+    - large
+    - extra-large
+    - huge
+    - mega
+    - titan
+  EXOSCALE_INSTANCE_TEMPLATE:
+    description: The Exoscale instance template to use.
+    default: container-optimized instance
+
+  INACTIVITY_TIMEOUT:
+    description: If defined, will automatically stop the VM after the inactivity period.
+    default: 10m
+  INJECT_GIT_CREDENTIALS:
+    description: "If DevPod should inject git credentials into the remote host."
+    default: "true"
+  INJECT_DOCKER_CREDENTIALS:
+    description: "If DevPod should inject docker credentials into the remote host."
+    default: "true"
+  AGENT_PATH:
+    description: The path where to inject the DevPod agent to.
+    default: /home/devpod/.devpod/devpod
+  AGENT_DATA_PATH:
+    description: The path where to store the agent data.
+    default: /home/devpod/.devpod/agent
+agent:
+  path: ${AGENT_PATH}
+  dataPath: ${AGENT_DATA_PATH}
+  inactivityTimeout: ${INACTIVITY_TIMEOUT}
+  injectGitCredentials: ${INJECT_GIT_CREDENTIALS}
+  injectDockerCredentials: ${INJECT_DOCKER_CREDENTIALS}
+  binaries:
+    EXO_PROVIDER:
+    - os: linux
+      arch: amd64
+      path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-linux-amd64
+      checksum: ##CHECKSUM_LINUX_AMD64##
+    - os: linux
+      arch: arm64
+      path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-linux-arm64
+      checksum: ##CHECKSUM_LINUX_ARM64##
+  exec:
+    shutdown: |-
+      ${EXO_PROVIDER} stop
+binaries:
+  EXO_PROVIDER:
+  - os: linux
+    arch: amd64
+    path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-linux-amd64
+    checksum: ##CHECKSUM_LINUX_AMD64##
+  - os: linux
+    arch: arm64
+    path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-linux-arm64
+    checksum: ##CHECKSUM_LINUX_ARM64##
+  - os: darwin
+    arch: amd64
+    path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-darwin-amd64
+    checksum: ##CHECKSUM_DARWIN_AMD64##
+  - os: darwin
+    arch: arm64
+    path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-darwin-arm64
+    checksum: ##CHECKSUM_DARWIN_ARM64##
+  - os: windows
+    arch: amd64
+    path: https://github.com/dirien/devpod-provider-exoscale/releases/download/##VERSION##/devpod-provider-exoscale-windows-amd64.exe
+    checksum: ##CHECKSUM_WINDOWS_AMD64##
+exec:
+  init: ${EXO_PROVIDER} init
+  command: ${EXO_PROVIDER} command
+  create: ${EXO_PROVIDER} create
+  delete: ${EXO_PROVIDER} delete
+  start: ${EXO_PROVIDER} start
+  stop: ${EXO_PROVIDER} stop
+  status: ${EXO_PROVIDER} status
