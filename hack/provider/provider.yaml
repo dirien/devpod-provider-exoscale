@@ -2,7 +2,7 @@ name: exoscale
 version: ##VERSION##
 description: |-
   DevPod on Exoscale
-icon: https://raw.githubusercontent.com/dirien/devpod-provider-exoscale/d5924bbd7054889d45b13a1546d08ee5e3acb7ff/exoscale.svg
+icon: https://raw.githubusercontent.com/dirien/devpod-provider-exoscale/main/exoscale.svg
 optionGroups:
 - options:
   - EXOSCALE_ZONE
