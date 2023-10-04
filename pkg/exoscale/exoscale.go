@@ -85,7 +85,7 @@ func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) 
 	var instanceID *string
 	for _, instance := range instances {
 		if strings.Contains(*instance.Name, exoscaleProvider.Config.MachineID) {
-			fmt.Printf("Found instance %v\n", *instance.Name)
+			exoscaleProvider.Log.Debugf("Found instance %v\n", *instance.Name)
 			instanceID = instance.ID
 			break
 		}
@@ -129,9 +129,8 @@ users:
   - %s
   sudo: [ "ALL=(ALL) NOPASSWD:ALL" ]`, publicKey)
 
-	fmt.Println(userData)
 	data := base64.StdEncoding.EncodeToString([]byte(userData))
-	fmt.Println(data)
+	exoscaleProvider.Log.Debugf("User data: %s", userData)
 	size, _ := strconv.Atoi(exoscaleProvider.Config.DiskSizeGB)
 	sizeGB := int64(size)
 
