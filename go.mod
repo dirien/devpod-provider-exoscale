@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/exoscale/egoscale v0.101.1
 	github.com/hashicorp/go-cleanhttp v0.5.2
-	github.com/loft-sh/devpod v0.4.0
+	github.com/loft-sh/devpod v0.4.1
 	github.com/loft-sh/log v0.0.0-20230824104949-bd516c25712a
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.7.0
