@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/dirien/devpod-provider-exoscale/pkg/exoscale"
 
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +25,6 @@ func NewInitCmd() *cobra.Command {
 			return cmd.Run(
 				context.Background(),
 				exoscaleProvider,
-				provider.FromEnvironment(),
 				log.Default,
 			)
 		},
@@ -39,7 +37,6 @@ func NewInitCmd() *cobra.Command {
 func (cmd *InitCmd) Run(
 	ctx context.Context,
 	exoscaleProvider *exoscale.ExoscaleProvider,
-	machine *provider.Machine,
 	logs log.Logger,
 ) error {
 	return exoscale.Init(ctx, exoscaleProvider)

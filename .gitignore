@@ -1,4 +1,5 @@
 .idea
 env
-devpod-provider-exosacle
+**/devpod-provider-exosacle
 release
+/devpod-provider-exoscale

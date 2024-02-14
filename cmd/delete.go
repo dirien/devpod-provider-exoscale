@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/dirien/devpod-provider-exoscale/pkg/exoscale"
 
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +26,6 @@ func NewDeleteCmd() *cobra.Command {
 			return cmd.Run(
 				context.Background(),
 				exoscaleProvider,
-				provider.FromEnvironment(),
 				log.Default,
 			)
 		},
@@ -40,7 +38,6 @@ func NewDeleteCmd() *cobra.Command {
 func (cmd *DeleteCmd) Run(
 	ctx context.Context,
 	providerExoscale *exoscale.ExoscaleProvider,
-	machine *provider.Machine,
 	logs log.Logger,
 ) error {
 	return exoscale.Delete(ctx, providerExoscale)
