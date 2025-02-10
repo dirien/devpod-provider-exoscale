@@ -5,8 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/dirien/devpod-provider-exoscale/pkg/options"
-	v2 "github.com/exoscale/egoscale/v2"
 	exoapi "github.com/exoscale/egoscale/v2/api"
+	v3 "github.com/exoscale/egoscale/v3"
+	credentials "github.com/exoscale/egoscale/v3/credentials"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/loft-sh/devpod/pkg/client"
 	"github.com/loft-sh/devpod/pkg/ssh"
@@ -20,7 +21,7 @@ import (
 
 type ExoscaleProvider struct {
 	Config           *options.Options
-	ClientV2         *v2.Client
+	ClientV3         *v3.Client
 	Log              log.Logger
 	WorkingDirectory string
 }
@@ -66,35 +67,35 @@ func NewProvider(logs log.Logger, init bool) (*ExoscaleProvider, error) {
 		return nil, errors.Errorf("EXOSCALE_API_SECRET is not set")
 	}
 
-	clientv2, err := v2.NewClient(apiKey, apiSecret)
+	clientv3, err := v3.NewClient(credentials.NewStaticCredentials(apiKey, apiSecret))
 	if err != nil {
 		return nil, err
 	}
 	return &ExoscaleProvider{
-		ClientV2: clientv2,
+		ClientV3: clientv3,
 		Log:      logs,
 		Config:   config,
 	}, nil
 }
 
-func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) (*v2.Instance, error) {
-	instances, err := exoscaleProvider.ClientV2.ListInstances(ctx, exoscaleProvider.Config.Zone)
+func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) (*v3.Instance, error) {
+	instances, err := exoscaleProvider.ClientV3.ListInstances(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var instanceID *string
-	for _, instance := range instances {
-		if strings.Contains(*instance.Name, exoscaleProvider.Config.MachineID) {
-			exoscaleProvider.Log.Debugf("Found instance %v\n", *instance.Name)
+	var instanceID v3.UUID
+	for _, instance := range instances.Instances {
+		if strings.Contains(instance.Name, exoscaleProvider.Config.MachineID) {
+			exoscaleProvider.Log.Debugf("Found instance %v\n", instance.Name)
 			instanceID = instance.ID
 			break
 		}
 	}
-	if instanceID == nil {
+	if instanceID == "" {
 		return nil, fmt.Errorf("instance not found")
 	}
 
-	instance, err := exoscaleProvider.ClientV2.GetInstance(ctx, exoscaleProvider.Config.Zone, *instanceID)
+	instance, err := exoscaleProvider.ClientV3.GetInstance(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get instance: %w", err)
 	}
@@ -103,7 +104,7 @@ func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) 
 
 func Init(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 	ctx2 := exoapi.WithEndpoint(ctx, exoapi.NewReqEndpoint("", exoscaleProvider.Config.Zone))
-	_, err := exoscaleProvider.ClientV2.ListZones(ctx2)
+	_, err := exoscaleProvider.ClientV3.ListZones(ctx2)
 	if err != nil {
 		return err
 	}
@@ -134,27 +135,27 @@ users:
 	size, _ := strconv.Atoi(exoscaleProvider.Config.DiskSizeGB)
 	sizeGB := int64(size)
 
-	instanceTypes, err := exoscaleProvider.ClientV2.ListInstanceTypes(ctx, exoscaleProvider.Config.Zone)
+	instanceTypes, err := exoscaleProvider.ClientV3.ListInstanceTypes(ctx)
 	if err != nil {
 		return err
 	}
-	var instanceTypeID *string
-	for _, instanceType := range instanceTypes {
-		if strings.Contains(*instanceType.Size, exoscaleProvider.Config.InstanceType) {
-			exoscaleProvider.Log.Infof("Found instance type %v", *instanceType.Size)
+	var instanceTypeID v3.UUID
+	for _, instanceType := range instanceTypes.InstanceTypes {
+		if strings.Contains(string(instanceType.Size), exoscaleProvider.Config.InstanceType) {
+			exoscaleProvider.Log.Infof("Found instance type %v", instanceType.Size)
 			instanceTypeID = instanceType.ID
 			break
 		}
 	}
 
-	listTemplates, err := exoscaleProvider.ClientV2.ListTemplates(ctx, exoscaleProvider.Config.Zone)
+	listTemplates, err := exoscaleProvider.ClientV3.ListTemplates(ctx)
 	if err != nil {
 		return err
 	}
-	var templateID *string
-	for _, template := range listTemplates {
-		if strings.Contains(*template.Family, exoscaleProvider.Config.InstanceTemplate) {
-			exoscaleProvider.Log.Infof("Found template %v", *template.Name)
+	var templateID v3.UUID
+	for _, template := range listTemplates.Templates {
+		if strings.Contains(template.Family, exoscaleProvider.Config.InstanceTemplate) {
+			exoscaleProvider.Log.Infof("Found template %v", template.Name)
 			templateID = template.ID
 			break
 		}
@@ -162,44 +163,54 @@ users:
 
 	ctx2 := exoapi.WithEndpoint(ctx, exoapi.NewReqEndpoint("", exoscaleProvider.Config.Zone))
 
-	sshPort := uint16(22)
-	group, err := exoscaleProvider.ClientV2.CreateSecurityGroup(ctx2, exoscaleProvider.Config.Zone, &v2.SecurityGroup{
-		Name:        StringPtr(fmt.Sprintf("%s-sg", exoscaleProvider.Config.MachineID)),
-		Description: StringPtr(fmt.Sprintf("Security group for %s", exoscaleProvider.Config.MachineID)),
-	})
-	if err != nil {
-		return err
-	}
-	err = exoscaleProvider.ClientV2.AddExternalSourceToSecurityGroup(ctx2, exoscaleProvider.Config.Zone, group, "0.0.0.0/0")
-	if err != nil {
-		return err
-	}
-	_, err = exoscaleProvider.ClientV2.CreateSecurityGroupRule(ctx2, exoscaleProvider.Config.Zone, group, &v2.SecurityGroupRule{
-		FlowDirection:   StringPtr("ingress"),
-		Protocol:        StringPtr("tcp"),
-		StartPort:       &sshPort,
-		EndPort:         &sshPort,
-		SecurityGroupID: group.ID,
-		Description:     StringPtr("SSH"),
+	sshPort := int64(22)
+	group, err := exoscaleProvider.ClientV3.CreateSecurityGroup(ctx2, v3.CreateSecurityGroupRequest{
+		Name:        fmt.Sprintf("%s-sg", exoscaleProvider.Config.MachineID),
+		Description: fmt.Sprintf("Security group for %s", exoscaleProvider.Config.MachineID),
 	})
 	if err != nil {
 		return err
 	}
 
-	groupIDs := []string{*group.ID}
-
-	instance := v2.Instance{
-		Name:               &exoscaleProvider.Config.MachineID,
-		InstanceTypeID:     instanceTypeID,
-		TemplateID:         templateID,
-		Zone:               &exoscaleProvider.Config.Zone,
-		DiskSize:           &sizeGB,
-		UserData:           &data,
-		PublicIPAssignment: StringPtr("inet4"),
-		SecurityGroupIDs:   &groupIDs,
+	securityGroup, err := exoscaleProvider.ClientV3.GetSecurityGroup(ctx2, group.ID)
+	if err != nil {
+		return err
 	}
 
-	_, err = exoscaleProvider.ClientV2.CreateInstance(ctx, exoscaleProvider.Config.Zone, &instance)
+	_, err = exoscaleProvider.ClientV3.AddExternalSourceToSecurityGroup(ctx2, securityGroup.ID, v3.AddExternalSourceToSecurityGroupRequest{
+		Cidr: "0.0.0.0/0",
+	})
+	if err != nil {
+		return err
+	}
+	_, err = exoscaleProvider.ClientV3.AddRuleToSecurityGroup(ctx2, securityGroup.ID, v3.AddRuleToSecurityGroupRequest{
+		FlowDirection: "ingress",
+		Protocol:      "tcp",
+		StartPort:     sshPort,
+		EndPort:       sshPort,
+		Description:   "SSH",
+	})
+	if err != nil {
+		return err
+	}
+
+	groupIDs := []v3.SecurityGroup{*securityGroup}
+
+	instance := v3.CreateInstanceRequest{
+		Name: exoscaleProvider.Config.MachineID,
+		Template: &v3.Template{
+			ID: templateID,
+		},
+		InstanceType: &v3.InstanceType{
+			ID: instanceTypeID,
+		},
+		DiskSize:           sizeGB,
+		UserData:           data,
+		PublicIPAssignment: "inet4",
+		SecurityGroups:     groupIDs,
+	}
+
+	_, err = exoscaleProvider.ClientV3.CreateInstance(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -211,15 +222,13 @@ func Delete(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 	if err != nil {
 		return err
 	}
-	err = exoscaleProvider.ClientV2.DeleteInstance(ctx, exoscaleProvider.Config.Zone, devPodInstance)
+	_, err = exoscaleProvider.ClientV3.DeleteInstance(ctx, devPodInstance.ID)
 	if err != nil {
 		return err
 	}
-	securityGroupId := (*devPodInstance.SecurityGroupIDs)[0]
+	securityGroupId := (devPodInstance.SecurityGroups)[0]
 
-	err = exoscaleProvider.ClientV2.DeleteSecurityGroup(ctx, exoscaleProvider.Config.Zone, &v2.SecurityGroup{
-		ID: &securityGroupId,
-	})
+	_, err = exoscaleProvider.ClientV3.DeleteSecurityGroup(ctx, securityGroupId.ID)
 	if err != nil {
 		return err
 	}
@@ -232,7 +241,7 @@ func Start(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 	if err != nil {
 		return err
 	}
-	err = exoscaleProvider.ClientV2.StartInstance(ctx, exoscaleProvider.Config.Zone, devPodInstance)
+	_, err = exoscaleProvider.ClientV3.StartInstance(ctx, devPodInstance.ID, v3.StartInstanceRequest{})
 	if err != nil {
 		return err
 	}
@@ -246,9 +255,9 @@ func Status(ctx context.Context, exoscaleProvider *ExoscaleProvider) (client.Sta
 		return client.StatusNotFound, nil
 	}
 	switch {
-	case *devPodInstance.State == "running":
+	case devPodInstance.State == "running":
 		return client.StatusRunning, nil
-	case *devPodInstance.State == "stopped":
+	case devPodInstance.State == "stopped":
 		return client.StatusStopped, nil
 	default:
 		return client.StatusBusy, nil
@@ -261,7 +270,7 @@ func Stop(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 		return err
 	}
 
-	err = exoscaleProvider.ClientV2.StopInstance(ctx, exoscaleProvider.Config.Zone, devPodInstance)
+	_, err = exoscaleProvider.ClientV3.StopInstance(ctx, devPodInstance.ID)
 	if err != nil {
 		return err
 	}
