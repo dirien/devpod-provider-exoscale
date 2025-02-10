@@ -4,19 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/dirien/devpod-provider-exoscale/pkg/options"
-	exoapi "github.com/exoscale/egoscale/v2/api"
 	v3 "github.com/exoscale/egoscale/v3"
-	credentials "github.com/exoscale/egoscale/v3/credentials"
+	"github.com/exoscale/egoscale/v3/credentials"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/loft-sh/devpod/pkg/client"
 	"github.com/loft-sh/devpod/pkg/ssh"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
 )
 
 type ExoscaleProvider struct {
@@ -103,8 +103,7 @@ func GetDevpodInstance(ctx context.Context, exoscaleProvider *ExoscaleProvider) 
 }
 
 func Init(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
-	ctx2 := exoapi.WithEndpoint(ctx, exoapi.NewReqEndpoint("", exoscaleProvider.Config.Zone))
-	_, err := exoscaleProvider.ClientV3.ListZones(ctx2)
+	_, err := exoscaleProvider.ClientV3.ListZones(ctx)
 	if err != nil {
 		return err
 	}
@@ -122,6 +121,32 @@ func Create(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 	}
 
 	userData := fmt.Sprintf(`#cloud-config
+package_update: true
+package_upgrade: true
+
+groups:
+  - docker
+
+system_info:
+  default_user:
+    groups: [ docker ]
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - unattended-upgrades
+
+runcmd:
+  - mkdir -p /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  - systemctl enable docker
+  - systemctl start docker
 users:
 - name: devpod
   shell: /bin/bash
@@ -154,17 +179,15 @@ users:
 	}
 	var templateID v3.UUID
 	for _, template := range listTemplates.Templates {
-		if strings.Contains(template.Family, exoscaleProvider.Config.InstanceTemplate) {
+		if strings.Contains(template.Name, exoscaleProvider.Config.InstanceTemplate) {
 			exoscaleProvider.Log.Infof("Found template %v", template.Name)
 			templateID = template.ID
 			break
 		}
 	}
 
-	ctx2 := exoapi.WithEndpoint(ctx, exoapi.NewReqEndpoint("", exoscaleProvider.Config.Zone))
-
 	sshPort := int64(22)
-	group, err := exoscaleProvider.ClientV3.CreateSecurityGroup(ctx2, v3.CreateSecurityGroupRequest{
+	groupOperation, err := exoscaleProvider.ClientV3.CreateSecurityGroup(ctx, v3.CreateSecurityGroupRequest{
 		Name:        fmt.Sprintf("%s-sg", exoscaleProvider.Config.MachineID),
 		Description: fmt.Sprintf("Security group for %s", exoscaleProvider.Config.MachineID),
 	})
@@ -172,23 +195,26 @@ users:
 		return err
 	}
 
-	securityGroup, err := exoscaleProvider.ClientV3.GetSecurityGroup(ctx2, group.ID)
+	securityGroup, err := exoscaleProvider.ClientV3.GetSecurityGroup(ctx, groupOperation.Reference.ID)
 	if err != nil {
 		return err
 	}
 
-	_, err = exoscaleProvider.ClientV3.AddExternalSourceToSecurityGroup(ctx2, securityGroup.ID, v3.AddExternalSourceToSecurityGroupRequest{
+	_, err = exoscaleProvider.ClientV3.AddExternalSourceToSecurityGroup(ctx, securityGroup.ID, v3.AddExternalSourceToSecurityGroupRequest{
 		Cidr: "0.0.0.0/0",
 	})
 	if err != nil {
 		return err
 	}
-	_, err = exoscaleProvider.ClientV3.AddRuleToSecurityGroup(ctx2, securityGroup.ID, v3.AddRuleToSecurityGroupRequest{
+	_, err = exoscaleProvider.ClientV3.AddRuleToSecurityGroup(ctx, securityGroup.ID, v3.AddRuleToSecurityGroupRequest{
 		FlowDirection: "ingress",
 		Protocol:      "tcp",
 		StartPort:     sshPort,
 		EndPort:       sshPort,
 		Description:   "SSH",
+		SecurityGroup: &v3.SecurityGroupResource{
+			ID: securityGroup.ID,
+		},
 	})
 	if err != nil {
 		return err
@@ -210,7 +236,7 @@ users:
 		SecurityGroups:     groupIDs,
 	}
 
-	_, err = exoscaleProvider.ClientV3.CreateInstance(ctx, instance)
+	_, err = exoscaleProvider.ClientV3.WithTrace().CreateInstance(ctx, instance)
 	if err != nil {
 		return err
 	}
