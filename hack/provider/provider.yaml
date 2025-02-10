@@ -59,7 +59,7 @@ options:
     - titan
   EXOSCALE_INSTANCE_TEMPLATE:
     description: The Exoscale instance template to use.
-    default: container-optimized instance
+    default: "Linux Ubuntu 24.10 64-bit"
 
   INACTIVITY_TIMEOUT:
     description: If defined, will automatically stop the VM after the inactivity period.
