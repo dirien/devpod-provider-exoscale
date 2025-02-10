@@ -236,7 +236,7 @@ users:
 		SecurityGroups:     groupIDs,
 	}
 
-	_, err = exoscaleProvider.ClientV3.WithTrace().CreateInstance(ctx, instance)
+	_, err = exoscaleProvider.ClientV3.CreateInstance(ctx, instance)
 	if err != nil {
 		return err
 	}
@@ -248,10 +248,19 @@ func Delete(ctx context.Context, exoscaleProvider *ExoscaleProvider) error {
 	if err != nil {
 		return err
 	}
-	_, err = exoscaleProvider.ClientV3.DeleteInstance(ctx, devPodInstance.ID)
+	delOperation, err := exoscaleProvider.ClientV3.DeleteInstance(ctx, devPodInstance.ID)
 	if err != nil {
 		return err
 	}
+	status := delOperation.State
+	for status == "pending" {
+		delOperation, err = exoscaleProvider.ClientV3.GetOperation(ctx, delOperation.ID)
+		if err != nil {
+			return err
+		}
+		status = delOperation.State
+	}
+
 	securityGroupId := (devPodInstance.SecurityGroups)[0]
 
 	_, err = exoscaleProvider.ClientV3.DeleteSecurityGroup(ctx, securityGroupId.ID)
